@@ -5,95 +5,96 @@ interface TreeNode{
     id: number
     children: TreeNode[],
     label: string,
-    parentId: number
+    parentId: number | null
+}
+
+interface CreateTreeInput{
+    parentId: number | null,
+    label: string
 }
 
 export class TreeController{
     private db: Database
-    private treeCache: Map<number, TreeNode> | null= null;
+    private treeCache: Map<number, TreeNode> = new Map();
     private rootNodes: TreeNode[] = []
 
     constructor( db: Database ){
         this.db = db
     }
 
-    async createTree(newNodeInfo: any): Promise<TreeNode>{
-        let { parentId } = newNodeInfo;
-        const { label } = newNodeInfo;
+    async createTree(newNodeInfo: CreateTreeInput): Promise<TreeNode> {
+        const { parentId, label } = newNodeInfo;
 
-        try{
-            await this.labelValidation(label)
-        } catch(e){
-            throw e
+        await this.labelValidation(label);
+
+        if (parentId !== null && (typeof parentId !== 'number' || isNaN(parentId) || parentId <= 0)) {
+            throw new Error('Parent ID must be a positive number or null');
         }
 
-        // Will attempt to build the tree if the current cache/rootNodes are empty
-        if(!this.treeCache || this.rootNodes.length == 0 ){
-            await this.buildTree()
+        if (!this.treeCache.size) {
+            await this.buildTree();
         }
 
-        // Validate parentId
-        const parentNodeExist = parentId && parentId > 0 ? this.treeCache?.get(parentId) : false;
+        const parentNodeExist = parentId ? this.treeCache.get(parentId) : false;
         if (parentId && !parentNodeExist) {
-            throw new Error('404: Parent node was not found');
-        }
-        
-        // Performs the creation of the new node in the db
-        const sql = "INSERT INTO nodes (parentId, label) VALUES (?, ?)"
-
-        const result = await this.db.run(sql, [parentId ? parentId : null, label])
-        if( !result.lastID){
-            throw new Error("500: Failed to create node")
+            throw new Error('Parent node not found');
         }
 
-        // Updates treeCache and rootNodes appropriately
-        const treeNode = {id: result.lastID, label: label, parentId: parentId, children: []}
-        this.treeCache?.set(result.lastID, treeNode)
-        if(!parentId){
-            this.rootNodes.push(treeNode)
+        let result;
+        try {
+            const sql = 'INSERT INTO nodes (parentId, label) VALUES (?, ?)';
+            result = await this.db.run(sql, [parentId, label]);
+            if (!result.lastID) {
+            throw new Error('Failed to create node: No ID returned');
+            }
+        } catch (error) {
+            throw new Error(`Failed to create node: ${(error as Error).message}`);
+        }
+
+        const treeNode: TreeNode = { id: result.lastID, label, parentId, children: [] };
+        this.treeCache.set(result.lastID, treeNode);
+        if (!parentId) {
+            this.rootNodes.push(treeNode);
         } else {
-           this.treeCache?.get(parentId)?.children.push(treeNode)
+            this.treeCache.get(parentId)!.children.push(treeNode);
         }
-        
-        return treeNode
+
+        return treeNode;
     }
 
     async getAllTrees(): Promise<TreeNode[]>{
-        if(!this.treeCache || this.rootNodes.length == 0 ){
+        if(!this.treeCache.size){
             return await this.buildTree()
         }
-
         return this.rootNodes
     }
 
     async getTreeById(id: number):Promise<TreeNode | undefined>{
-        if(!this.treeCache || this.rootNodes.length == 0 ){
+        if(!this.treeCache.size){
             await this.buildTree()
         }
-        return this.treeCache?.get(id)
+        return this.treeCache.get(id)
     }
-   
-    private async labelValidation(label: any){
 
+    private async labelValidation(label: any){
         // Validate label
         if (!label || typeof label !== 'string' || label.trim().length === 0) {
-            throw new Error('400: Label is required and must be a non-empty string');
+            throw new Error('Label is required and must be a non-empty string');
         }
         if (label.length > 255) {
-            throw new Error('400: Label must not exceed 255 characters');
+            throw new Error('Label must not exceed 255 characters');
         }
 
         // Check for duplicate label
         const labelCheckSql = 'SELECT id FROM nodes WHERE label = ?';
         const existingNode = await this.db.get(labelCheckSql, [label]);
         if (existingNode) {
-            throw new Error('400: Label already exists');
+            throw new Error('Label already exists');
         }
  
     }
 
-    private async buildTree(){
-        console.log('first building tree')
+    private async buildTree():Promise<TreeNode[]>{
         const sql = "SELECT * FROM nodes ORDER BY parentId asc";
         const rows = await this.db.all(sql);
         this.treeCache = new Map<number, TreeNode>()
