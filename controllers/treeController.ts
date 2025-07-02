@@ -1,4 +1,4 @@
-import { Database, Statement } from "sqlite";
+import { Database } from "sqlite";
 
 
 interface TreeNode{
