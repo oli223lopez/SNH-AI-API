@@ -49,9 +49,8 @@ SNH-AI-Tree-API/
 ### Setup
 1. **Clone the Repository**:
    ```bash
-   git clone <your-repo-url>
-   cd <project-folder>
-
+   git clone https://github.com/oli223lopez/SNH-AI-API.git
+   
 2. **Install Dependencies**:
    
     Make sure that your current version of node is set to the latest. If not run:
