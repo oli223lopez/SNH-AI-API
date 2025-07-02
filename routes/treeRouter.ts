@@ -33,8 +33,12 @@ export function treeRouter(treeController: TreeController){
     "/api/tree",
     express.json(),
     async (req: Request, res: Response) => {
-      const { label, parentId: rawParentId } = req.body;
 
+      if(!req.body || typeof req.body !== 'object'){
+        res.status(400).json({error: "Request body was undefined. Please check your request"})
+      }
+
+      const { label, parentId: rawParentId } = req.body;
       if (!label || typeof label !== "string" || label.trim().length === 0) {
         res.status(400).json({ error: "Label must be a non-empty string" });
         return;
